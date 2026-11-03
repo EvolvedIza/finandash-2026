@@ -1,0 +1,578 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard Financeiro 2026</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  :root{
+    --bg:#f4f7fb; --card:#ffffff; --txt:#1f2937; --muted:#6b7280;
+    --green:#16a34a; --green-bg:#dcfce7; --red:#dc2626; --red-bg:#fee2e2;
+    --orange:#f59e0b; --orange-bg:#fef3c7; --blue:#2563eb; --blue-bg:#dbeafe;
+    --border:#e5e7eb; --shadow:0 2px 10px rgba(0,0,0,.06); --radius:14px;
+  }
+  *{box-sizing:border-box}
+  body{
+    margin:0; font-family:'Segoe UI',Roboto,Arial,sans-serif; background:var(--bg);
+    color:var(--txt); display:flex; min-height:100vh;
+  }
+  /* MENU LATERAL */
+  aside{
+    width:230px; background:#0f172a; color:#e2e8f0; padding:20px 0;
+    position:fixed; top:0; bottom:0; left:0; overflow-y:auto; z-index:10;
+  }
+  aside h1{font-size:1.1rem; padding:0 20px 10px; margin:0; color:#fff; letter-spacing:.5px}
+  aside h1 span{color:#38bdf8}
+  aside small{display:block; padding:0 20px 16px; color:#94a3b8; font-size:.72rem}
+  aside nav button{
+    display:block; width:100%; text-align:left; background:none; border:none;
+    color:#cbd5e1; padding:12px 20px; font-size:.9rem; cursor:pointer;
+    border-left:3px solid transparent; transition:.15s;
+  }
+  aside nav button:hover{background:#1e293b; color:#fff}
+  aside nav button.active{background:#1e293b; color:#38bdf8; border-left-color:#38bdf8; font-weight:600}
+  /* CONTEÚDO */
+  main{margin-left:230px; flex:1; padding:22px; max-width:100%}
+  header.top{
+    display:flex; flex-wrap:wrap; gap:14px; justify-content:space-between;
+    align-items:center; margin-bottom:18px;
+  }
+  header.top h2{margin:0; font-size:1.35rem}
+  .toolbar{display:flex; gap:8px; flex-wrap:wrap}
+  .btn{
+    border:none; border-radius:9px; padding:9px 14px; font-size:.84rem;
+    cursor:pointer; font-weight:600; transition:.15s; display:inline-flex; gap:6px; align-items:center;
+  }
+  .btn.primary{background:var(--blue); color:#fff}
+  .btn.primary:hover{background:#1d4ed8}
+  .btn.ghost{background:#fff; color:var(--txt); border:1px solid var(--border)}
+  .btn.ghost:hover{background:#f1f5f9}
+  .btn.danger{background:var(--red); color:#fff}
+  .btn.danger:hover{background:#b91c1c}
+  .btn.green{background:var(--green); color:#fff}
+  .btn.small{padding:5px 9px; font-size:.75rem}
+  /* CARDS */
+  .grid{display:grid; gap:14px}
+  .cards{grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .card{
+    background:var(--card); border-radius:var(--radius); padding:16px;
+    box-shadow:var(--shadow); border:1px solid var(--border);
+  }
+  .card .label{font-size:.75rem; color:var(--muted); text-transform:uppercase; letter-spacing:.4px}
+  .card .value{font-size:1.35rem; font-weight:700; margin-top:6px}
+  .card .sub{font-size:.72rem; color:var(--muted); margin-top:4px}
+  .pos{color:var(--green)} .neg{color:var(--red)} .warn{color:var(--orange)}
+  .bg-green{background:var(--green-bg)} .bg-red{background:var(--red-bg)}
+  .bg-orange{background:var(--orange-bg)} .bg-blue{background:var(--blue-bg)}
+  /* TABELAS */
+  table{width:100%; border-collapse:collapse; font-size:.84rem}
+  th,td{padding:9px 8px; text-align:left; border-bottom:1px solid var(--border)}
+  th{background:#f8fafc; font-size:.72rem; text-transform:uppercase; letter-spacing:.4px; color:var(--muted)}
+  tr:hover td{background:#f8fafc}
+  .right{text-align:right}
+  .empty{color:var(--muted); font-size:.85rem; padding:14px; text-align:center}
+  /* FORMULÁRIOS */
+  .form-row{display:grid; grid-template-columns:repeat(auto-fit,minmax(140px,1fr)); gap:10px; margin-bottom:10px}
+  input,select,textarea{
+    width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:9px;
+    font-size:.86rem; font-family:inherit; background:#fff; color:var(--txt);
+  }
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--blue-bg); border-color:var(--blue)}
+  label{font-size:.75rem; color:var(--muted); display:block; margin-bottom:4px; font-weight:600}
+  .field{display:flex; flex-direction:column}
+  /* BADGES */
+  .badge{display:inline-block; padding:3px 9px; border-radius:20px; font-size:.72rem; font-weight:700}
+  .badge.paid{background:var(--green-bg); color:var(--green)}
+  .badge.pend{background:var(--orange-bg); color:#b45309}
+  .badge.info{background:var(--blue-bg); color:var(--blue)}
+  /* ABAS INTERNAS */
+  .subtabs{display:flex; gap:6px; margin:10px 0 16px; flex-wrap:wrap}
+  .subtabs button{
+    background:#fff; border:1px solid var(--border); border-radius:9px; padding:7px 12px;
+    font-size:.8rem; cursor:pointer; font-weight:600; color:var(--muted);
+  }
+  .subtabs button.active{background:var(--blue); color:#fff; border-color:var(--blue)}
+  /* CALENDÁRIO */
+  .cal-month{background:var(--card); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow); margin-bottom:16px}
+  .cal-month h3{margin:0 0 10px; font-size:1rem}
+  .cal-grid{display:grid; grid-template-columns:repeat(7,1fr); gap:4px}
+  .cal-dow{text-align:center; font-size:.7rem; color:var(--muted); font-weight:700; padding:4px 0}
+  .cal-day{
+    min-height:64px; border:1px solid var(--border); border-radius:8px; padding:4px;
+    font-size:.72rem; background:#fff; position:relative; overflow:hidden;
+  }
+  .cal-day.other{background:#f8fafc; color:#cbd5e1}
+  .cal-day .dnum{font-weight:700; color:var(--txt); font-size:.78rem}
+  .cal-day.other .dnum{color:#cbd5e1}
+  .cal-day .tag{display:block; font-size:.62rem; margin-top:2px; border-radius:4px; padding:1px 4px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+  .tag.gain{background:var(--green-bg); color:#166534}
+  .tag.fixed{background:var(--red-bg); color:#991b1b}
+  .tag.var{background:#ede9fe; color:#5b21b6}
+  /* GRÁFICOS */
+  .chart-box{background:var(--card); border-radius:var(--radius); padding:14px; box-shadow:var(--shadow); border:1px solid var(--border)}
+  .chart-box h4{margin:0 0 10px; font-size:.9rem}
+  .chart-canvas{position:relative; height:280px; width:100%}
+  /* MODAL */
+  .modal-bg{
+    position:fixed; inset:0; background:rgba(15,23,42,.55); display:none;
+    align-items:center; justify-content:center; z-index:50; padding:16px;
+  }
+  .modal-bg.show{display:flex}
+  .modal{
+    background:#fff; border-radius:16px; padding:20px; width:100%; max-width:460px;
+    box-shadow:0 20px 50px rgba(0,0,0,.3); max-height:90vh; overflow-y:auto;
+  }
+  .modal h3{margin:0 0 14px}
+  .modal .actions{display:flex; gap:8px; justify-content:flex-end; margin-top:14px}
+  .hidden{display:none !important}
+  .filter-bar{display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-bottom:12px}
+  .filter-bar select,.filter-bar input{max-width:220px}
+  .section-title{display:flex; justify-content:space-between; align-items:center; margin:18px 0 10px; flex-wrap:wrap; gap:8px}
+  .section-title h3{margin:0; font-size:1.02rem}
+  @media(max-width:820px){
+    aside{width:64px; padding-top:14px}
+    aside h1,aside small{display:none}
+    aside nav button{padding:12px 0; text-align:center; font-size:1.1rem}
+    aside nav button span{display:none}
+    main{margin-left:64px; padding:14px}
+  }
+  @media(max-width:520px){
+    .cards{grid-template-columns:1fr 1fr}
+    .card .value{font-size:1.05rem}
+    main{margin-left:0; padding:10px}
+    aside{position:relative; width:100%; display:flex; flex-wrap:wrap; padding:6px}
+    aside nav{display:flex; flex-wrap:wrap; width:100%}
+    aside nav button{width:auto; flex:1; padding:8px; font-size:.7rem; border-left:none; border-bottom:3px solid transparent}
+    aside nav button.active{border-left:none; border-bottom-color:#38bdf8}
+  }
+</style>
+</head>
+<body>
+
+<aside>
+  <h1>Finan<span>Dash</span> 2026</h1>
+  <small>Controle financeiro pessoal</small>
+  <nav id="mainNav">
+    <button data-tab="overview" class="active">📊 <span>Visão Geral</span></button>
+    <button data-tab="gains">💰 <span>Ganhos Semanais</span></button>
+    <button data-tab="fixed">🏠 <span>Despesas Fixas</span></button>
+    <button data-tab="variable">🛒 <span>Despesas Variáveis</span></button>
+    <button data-tab="calendar">📅 <span>Calendário</span></button>
+    <button data-tab="charts">📈 <span>Gráficos</span></button>
+  </nav>
+</aside>
+
+<main>
+  <header class="top">
+    <h2 id="pageTitle">Visão Geral</h2>
+    <div class="toolbar">
+      <button class="btn ghost" onclick="exportPDF()">🖨️ PDF</button>
+      <button class="btn ghost" onclick="exportCSV()">📥 Excel/CSV</button>
+      <button class="btn danger" onclick="clearAll()">🗑️ Limpar dados</button>
+    </div>
+  </header>
+
+  <!-- ================= VISÃO GERAL ================= -->
+  <section id="tab-overview">
+    <div class="filter-bar">
+      <select id="ovMonth"></select>
+      <button class="btn primary" onclick="refreshAll()">Atualizar</button>
+    </div>
+    <div class="grid cards" id="overviewCards"></div>
+
+    <div class="section-title"><h3>Resumo do mês selecionado</h3></div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Indicador</th><th class="right">Valor</th></tr>
+        </thead>
+        <tbody id="ovTable"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title"><h3>Evolução mensal (ano 2026)</h3></div>
+    <div class="card">
+      <table>
+        <thead>
+          <tr><th>Mês</th><th class="right">Ganhos</th><th class="right">Desp. Fixas pagas</th><th class="right">Desp. Variáveis</th><th class="right">Saldo realizado</th><th class="right">Saldo projetado</th></tr>
+        </thead>
+        <tbody id="ovYearTable"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ================= GANHOS SEMANAIS ================= -->
+  <section id="tab-gains" class="hidden">
+    <div class="card">
+      <h3 style="margin-top:0">Novo recebimento</h3>
+      <div class="form-row">
+        <div class="field"><label>Data</label><input type="date" id="gDate" /></div>
+        <div class="field"><label>Semana</label><select id="gWeek"></select></div>
+        <div class="field"><label>Valor (R$)</label><input type="number" step="0.01" id="gValue" placeholder="0,00" /></div>
+        <div class="field"><label>Descrição</label><input type="text" id="gDesc" placeholder="Opcional" /></div>
+      </div>
+      <button class="btn green" onclick="addGain()">➕ Adicionar recebimento</button>
+    </div>
+
+    <div class="grid cards" style="margin-top:14px" id="gainSummary"></div>
+
+    <div class="filter-bar" style="margin-top:14px">
+      <select id="gFilterMonth"></select>
+      <input type="text" id="gSearch" placeholder="Buscar descrição..." oninput="renderGains()" />
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr><th>Data</th><th>Semana</th><th>Descrição</th><th class="right">Valor</th><th></th></tr></thead>
+        <tbody id="gainsTable"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title"><h3>Recebimentos por semana</h3></div>
+    <div class="chart-box"><div class="chart-canvas"><canvas id="chartGainsWeek"></canvas></div></div>
+
+    <div class="section-title"><h3>Comparativo mensal</h3></div>
+    <div class="chart-box"><div class="chart-canvas"><canvas id="chartGainsMonth"></canvas></div></div>
+  </section>
+
+  <!-- ================= DESPESAS FIXAS ================= -->
+  <section id="tab-fixed" class="hidden">
+    <div class="card">
+      <h3 style="margin-top:0">Nova despesa fixa</h3>
+      <div class="form-row">
+        <div class="field"><label>Nome</label><input type="text" id="fName" placeholder="Ex: Aluguel" /></div>
+        <div class="field"><label>Categoria</label>
+          <select id="fCategory">
+            <option>Aluguel</option><option>Água</option><option>Energia</option>
+            <option>Internet</option><option>Telefone</option><option>Financiamentos</option>
+            <option>Empréstimos</option><option>Assinaturas</option><option>Mensalidades</option><option>Outros</option>
+          </select>
+        </div>
+        <div class="field"><label>Valor mensal (R$)</label><input type="number" step="0.01" id="fValue" /></div>
+        <div class="field"><label>Dia vencimento</label><input type="number" min="1" max="31" id="fDue" /></div>
+      </div>
+      <button class="btn primary" onclick="addFixed()">➕ Adicionar despesa fixa</button>
+    </div>
+
+    <div class="filter-bar" style="margin-top:14px">
+      <select id="fFilterMonth"></select>
+    </div>
+
+    <div class="card" style="margin-top:10px">
+      <table>
+        <thead><tr><th>Nome</th><th>Categoria</th><th>Venc.</th><th class="right">Valor</th><th>Situação</th><th></th></tr></thead>
+        <tbody id="fixedTable"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title"><h3>Total mensal das despesas fixas (ano)</h3></div>
+    <div class="chart-box"><div class="chart-canvas"><canvas id="chartFixedMonth"></canvas></div></div>
+  </section>
+
+  <!-- ================= DESPESAS VARIÁVEIS ================= -->
+  <section id="tab-variable" class="hidden">
+    <div class="subtabs" id="varSubtabs">
+      <button data-mode="individual" class="active">Lançamento individual</button>
+      <button data-mode="average">Média mensal</button>
+    </div>
+
+    <!-- INDIVIDUAL -->
+    <div id="varIndividual">
+      <div class="card">
+        <h3 style="margin-top:0">Novo gasto variável</h3>
+        <div class="form-row">
+          <div class="field"><label>Nome do gasto</label><input type="text" id="vName" placeholder="Ex: Supermercado" /></div>
+          <div class="field"><label>Categoria</label>
+            <select id="vCategory">
+              <option>Supermercado</option><option>Farmácia</option><option>Combustível</option>
+              <option>Alimentação</option><option>Compras</option><option>Lazer</option>
+              <option>Manutenção</option><option>Outros</option>
+            </select>
+          </div>
+          <div class="field"><label>Data</label><input type="date" id="vDate" /></div>
+          <div class="field"><label>Valor (R$)</label><input type="number" step="0.01" id="vValue" /></div>
+          <div class="field"><label>Descrição</label><input type="text" id="vDesc" placeholder="Opcional" /></div>
+        </div>
+        <button class="btn primary" onclick="addVariable()">➕ Adicionar gasto</button>
+      </div>
+    </div>
+
+    <!-- MÉDIA -->
+    <div id="varAverage" class="hidden">
+      <div class="card">
+        <h3 style="margin-top:0">Média mensal por categoria</h3>
+        <p style="font-size:.8rem;color:var(--muted);margin-top:0">
+          Informe a média de gastos por categoria. Ao ativar a média, os lançamentos individuais dessa categoria são
+          ignorados no mês correspondente (evita duplicidade).
+        </p>
+        <div class="form-row">
+          <div class="field"><label>Mês</label><select id="vaMonth"></select></div>
+          <div class="field"><label>Categoria</label>
+            <select id="vaCategory">
+              <option>Supermercado</option><option>Farmácia</option><option>Combustível</option>
+              <option>Alimentação</option><option>Compras</option><option>Lazer</option>
+              <option>Manutenção</option><option>Outros</option>
+            </select>
+          </div>
+          <div class="field"><label>Valor médio (R$)</label><input type="number" step="0.01" id="vaValue" /></div>
+        </div>
+        <button class="btn primary" onclick="addAverage()">➕ Salvar média</button>
+        <div style="margin-top:14px">
+          <table>
+            <thead><tr><th>Mês</th><th>Categoria</th><th class="right">Valor médio</th><th></th></tr></thead>
+            <tbody id="avgTable"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="filter-bar" style="margin-top:14px">
+      <select id="vFilterMonth"></select>
+      <input type="text" id="vSearch" placeholder="Buscar..." oninput="renderVariables()" />
+    </div>
+
+    <div class="card">
+      <table>
+        <thead><tr><th>Data</th><th>Nome</th><th>Categoria</th><th class="right">Valor</th><th></th></tr></thead>
+        <tbody id="varTable"></tbody>
+      </table>
+    </div>
+
+    <div class="section-title"><h3>Total variável por mês (individual + médias)</h3></div>
+    <div class="chart-box"><div class="chart-canvas"><canvas id="chartVarMonth"></canvas></div></div>
+  </section>
+
+  <!-- ================= CALENDÁRIO ================= -->
+  <section id="tab-calendar" class="hidden">
+    <div class="filter-bar">
+      <select id="calMonth"></select>
+    </div>
+    <div id="calendarContainer"></div>
+  </section>
+
+  <!-- ================= GRÁFICOS ================= -->
+  <section id="tab-charts" class="hidden">
+    <div class="grid" style="grid-template-columns:repeat(auto-fit,minmax(340px,1fr))">
+      <div class="chart-box"><h4>1. Ganhos por semana</h4><div class="chart-canvas"><canvas id="ch1"></canvas></div></div>
+      <div class="chart-box"><h4>2. Ganhos × Gastos mensais</h4><div class="chart-canvas"><canvas id="ch2"></canvas></div></div>
+      <div class="chart-box"><h4>3. Distribuição das despesas por categoria</h4><div class="chart-canvas"><canvas id="ch3"></canvas></div></div>
+      <div class="chart-box"><h4>4. Evolução do saldo acumulado</h4><div class="chart-canvas"><canvas id="ch4"></canvas></div></div>
+      <div class="chart-box"><h4>5. Despesas fixas × variáveis</h4><div class="chart-canvas"><canvas id="ch5"></canvas></div></div>
+    </div>
+  </section>
+</main>
+
+<!-- MODAL -->
+<div class="modal-bg" id="modalBg">
+  <div class="modal" id="modalContent"></div>
+</div>
+
+<script>
+/* ============================================================
+   DADOS E CALENDÁRIO REAL DE 2026
+   ============================================================ */
+const STORAGE_KEY = 'finDash2026_v1';
+const MONTHS = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+                'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
+const WEEKDAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+let state = {
+  gains: [],          // {id, date, week, value, desc}
+  fixed: [],          // {id, name, category, value, due}
+  fixedStatus: {},    // {fixedId: {1:true,...}} mês -> pago
+  variable: [],       // {id, name, category, date, value, desc}
+  averages: [],       // {id, month(1-12), category, value}
+  varMode: {}         // não usado para duplicidade global; controle por presença de média
+};
+
+// Calendário real 2026: 1º de janeiro = quinta-feira
+const YEAR = 2026;
+const firstDay = new Date(YEAR,0,1); // quinta
+const daysInYear = (YEAR%4===0 && (YEAR%100!==0||YEAR%400===0)) ? 366 : 365;
+
+function pad(n){return String(n).padStart(2,'0');}
+function fmtDate(d){ return `${pad(d.getDate())}/${pad(d.getMonth()+1)}/${d.getFullYear()}`; }
+function isoDate(d){ return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; }
+function parseISO(s){ const [y,m,d]=s.split('-').map(Number); return new Date(y,m-1,d); }
+function money(v){ return (v||0).toLocaleString('pt-BR',{style:'currency',currency:'BRL'}); }
+function num(v){ return (v||0).toLocaleString('pt-BR',{minimumFractionDigits:2,maximumFractionDigits:2}); }
+function uid(){ return Date.now().toString(36)+Math.random().toString(36).slice(2,7); }
+function clampMonth(m){ return Math.max(1,Math.min(12,m)); }
+
+// Semanas reais de 2026: semana 1 = 01/01 a 04/01 (primeira semana completa? Vamos considerar semanas ISO-like)
+// Requisito: "campo para cada semana do ano". Vamos gerar 52/53 semanas baseadas em segunda-feira.
+// 01/01/2026 é quinta. Semana ISO começa segunda. A primeira semana ISO de 2026 começa 29/12/2025.
+// Para simplificar e manter coerência, usaremos semanas de domingo a sábado começando em 28/12/2025? 
+// Melhor: semanas de segunda a domingo, exibindo a semana que contém a data. Vamos gerar todas as semanas que tocam 2026.
+function getWeeksOfYear(){
+  const weeks = [];
+  // Começa na segunda-feira da semana que contém 01/01/2026
+  let d = new Date(2026,0,1);
+  const day = d.getDay(); // 4 = quinta
+  const diffToMonday = (day===0? -6 : 1-day);
+  let monday = new Date(d); monday.setDate(d.getDate()+diffToMonday);
+  let idx = 1;
+  while(true){
+    const sunday = new Date(monday); sunday.setDate(monday.getDate()+6);
+    // Inclui se a semana toca 2026
+    if (monday.getFullYear()>2026) break;
+    if (sunday.getFullYear()<2026) { monday.setDate(monday.getDate()+7); continue; }
+    weeks.push({
+      index: idx++,
+      start: new Date(monday),
+      end: new Date(sunday),
+      label: `Sem ${idx-1} (${pad(monday.getDate())}/${pad(monday.getMonth()+1)} - ${pad(sunday.getDate())}/${pad(sunday.getMonth()+1)})`
+    });
+    monday.setDate(monday.getDate()+7);
+    if (idx>60) break;
+  }
+  return weeks;
+}
+const WEEKS = getWeeksOfYear();
+
+function weekForDate(dateStr){
+  const d = parseISO(dateStr);
+  for (const w of WEEKS){
+    if (d>=w.start && d<=w.end) return w;
+  }
+  return WEEKS[0];
+}
+
+function monthOfDate(dateStr){ return parseISO(dateStr).getMonth()+1; }
+
+/* ============================================================
+   PERSISTÊNCIA
+   ============================================================ */
+function save(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+}
+function load(){
+  const raw = localStorage.getItem(STORAGE_KEY);
+  if (raw){
+    try{
+      const s = JSON.parse(raw);
+      state = Object.assign(state, s);
+    }catch(e){ console.warn(e); }
+  }
+}
+
+/* ============================================================
+   CÁLCULOS
+   ============================================================ */
+function gainsMonth(m){ return state.gains.filter(g=>monthOfDate(g.date)===m).reduce((a,g)=>a+Number(g.value||0),0); }
+function gainsYear(){ return state.gains.reduce((a,g)=>a+Number(g.value||0),0); }
+
+// Despesas fixas: valor mensal por mês; pago apenas se status[mês] verdadeiro
+function fixedValueMonth(m){
+  return state.fixed.reduce((a,f)=>a+Number(f.value||0),0);
+}
+function fixedPaidMonth(m){
+  return state.fixed.filter(f=>state.fixedStatus[f.id]?.[m]).reduce((a,f)=>a+Number(f.value||0),0);
+}
+function fixedPendingMonth(m){
+  return state.fixed.filter(f=>!state.fixedStatus[f.id]?.[m]).reduce((a,f)=>a+Number(f.value||0),0);
+}
+
+// Variáveis: para cada categoria com média no mês, ignora individuais dessa categoria.
+function variableCategoriesWithAverage(m){
+  return new Set(state.averages.filter(a=>a.month===m).map(a=>a.category));
+}
+function variableMonth(m){
+  const catsAvg = variableCategoriesWithAverage(m);
+  const indiv = state.variable.filter(v=>{
+    if (monthOfDate(v.date)!==m) return false;
+    if (catsAvg.has(v.category)) return false; // média substitui
+    return true;
+  }).reduce((a,v)=>a+Number(v.value||0),0);
+  const avg = state.averages.filter(a=>a.month===m).reduce((a,x)=>a+Number(x.value||0),0);
+  return indiv + avg;
+}
+function variableBreakdownMonth(m){
+  // retorna {category: value} respeitando médias
+  const catsAvg = variableCategoriesWithAverage(m);
+  const map = {};
+  state.variable.filter(v=>monthOfDate(v.date)===m && !catsAvg.has(v.category))
+    .forEach(v=>{ map[v.category]=(map[v.category]||0)+Number(v.value||0); });
+  state.averages.filter(a=>a.month===m)
+    .forEach(a=>{ map[a.category]=(map[a.category]||0)+Number(a.value||0); });
+  return map;
+}
+function variableYear(){
+  let t=0; for(let m=1;m<=12;m++) t+=variableMonth(m); return t;
+}
+
+function expensesMonth(m){ return fixedValueMonth(m)+variableMonth(m); }
+function expensesPaidMonth(m){ return fixedPaidMonth(m)+variableMonth(m); } // variáveis consideradas pagas
+function expensesYear(){ let t=0; for(let m=1;m<=12;m++) t+=expensesMonth(m); return t; }
+
+function saldoRealizadoMonth(m){ return gainsMonth(m) - expensesPaidMonth(m); }
+function saldoProjetadoMonth(m){ return gainsMonth(m) - expensesMonth(m); }
+function saldoAcumuladoAte(m){
+  let s=0; for(let i=1;i<=m;i++) s+=saldoRealizadoMonth(i); return s;
+}
+function saldoAcumuladoProjetadoAte(m){
+  let s=0; for(let i=1;i<=m;i++) s+=saldoProjetadoMonth(i); return s;
+}
+
+/* ============================================================
+   NAVEGAÇÃO
+   ============================================================ */
+const titles = {
+  overview:'Visão Geral', gains:'Ganhos Semanais', fixed:'Despesas Fixas',
+  variable:'Despesas Variáveis', calendar:'Calendário Financeiro', charts:'Gráficos e Relatórios'
+};
+document.querySelectorAll('#mainNav button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#mainNav button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    const tab = b.dataset.tab;
+    document.querySelectorAll('main > section').forEach(s=>s.classList.add('hidden'));
+    document.getElementById('tab-'+tab).classList.remove('hidden');
+    document.getElementById('pageTitle').textContent = titles[tab];
+    if(tab==='charts') renderCharts();
+    if(tab==='calendar') renderCalendar();
+    if(tab==='overview') renderOverview();
+    if(tab==='fixed') renderFixed();
+    if(tab==='variable') renderVariables();
+    if(tab==='gains') renderGains();
+  });
+});
+
+/* ============================================================
+   POPULAR SELECTS
+   ============================================================ */
+function fillMonthSelect(el, includeAll=true, placeholder='Todos os meses'){
+  el.innerHTML = '';
+  if(includeAll){ const o=document.createElement('option'); o.value='all'; o.textContent=placeholder; el.appendChild(o); }
+  MONTHS.forEach((n,i)=>{
+    const o=document.createElement('option'); o.value=i+1; o.textContent=n; el.appendChild(o);
+  });
+}
+function fillWeekSelect(el){
+  el.innerHTML='';
+  WEEKS.forEach(w=>{
+    const o=document.createElement('option'); o.value=w.index;
+    o.textContent = w.label; el.appendChild(o);
+  });
+}
+
+fillMonthSelect(document.getElementById('ovMonth'), false);
+fillMonthSelect(document.getElementById('gFilterMonth'));
+fillMonthSelect(document.getElementById('fFilterMonth'));
+fillMonthSelect(document.getElementById('vFilterMonth'));
+fillMonthSelect(document.getElementById('calMonth'), false);
+fillMonthSelect(document.getElementById('vaMonth'), false);
+fillWeekSelect(document.getElementById('gWeek'));
+
+/* ============================================================
+   GANHOS
+   ============================================================ */
+function addGain(){
+  const date = document.getElementById('gDate').value;
+  const weekIdx = Number(document.getElementById('gWeek').value);
+  const value = parseFloat(document.getElementById('gValue').value);
+  const desc = document.getElementById('gDesc').value.trim();
+  if(!date){ return alert('Informe a data.'); }
+  if(!value || value<=0
+  
