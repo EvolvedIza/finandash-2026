@@ -574,5 +574,472 @@ function addGain(){
   const value = parseFloat(document.getElementById('gValue').value);
   const desc = document.getElementById('gDesc').value.trim();
   if(!date){ return alert('Informe a data.'); }
-  if(!value || value<=0
-  
+  if(!value || value<=0){ return alert('Informe um valor válido.'); }
+  const w = WEEKS.find(x=>x.index===weekIdx) || weekForDate(date);
+  state.gains.push({id:uid(), date, week: w.index, value, desc});
+  save();
+  document.getElementById('gDate').value='';
+  document.getElementById('gValue').value='';
+  document.getElementById('gDesc').value='';
+  renderGains(); renderOverview(); refreshChartsIfNeeded();
+}
+
+function deleteGain(id){
+  if(!confirm('Excluir este recebimento?')) return;
+  state.gains = state.gains.filter(g=>g.id!==id);
+  save(); renderGains(); renderOverview(); refreshChartsIfNeeded();
+}
+
+function renderGains(){
+  const filterM = document.getElementById('gFilterMonth').value;
+  const search = document.getElementById('gSearch').value.toLowerCase();
+  let list = state.gains.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  if(filterM!=='all') list = list.filter(g=>monthOfDate(g.date)==filterM);
+  if(search) list = list.filter(g=>(g.desc||'').toLowerCase().includes(search));
+  const tbody = document.getElementById('gainsTable');
+  tbody.innerHTML = list.length? list.map(g=>{
+    const w = WEEKS.find(x=>x.index===g.week) || weekForDate(g.date);
+    return `<tr>
+      <td>${fmtDate(parseISO(g.date))}</td>
+      <td>${w.label}</td>
+      <td>${g.desc||'-'}</td>
+      <td class="right pos">${money(g.value)}</td>
+      <td><button class="btn danger small" onclick="deleteGain('${g.id}')">✕</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" class="empty">Nenhum recebimento lançado.</td></tr>`;
+
+  // Resumo
+  const monthSel = document.getElementById('gFilterMonth').value;
+  const week = Number(document.getElementById('gWeek').value);
+  const totalWeek = state.gains.filter(g=>g.week===week).reduce((a,g)=>a+Number(g.value||0),0);
+  const totalMonth = monthSel==='all'?gainsYear():gainsMonth(monthSel);
+  const totalYear = gainsYear();
+  const avgWeek = state.gains.length? totalYear / WEEKS.length : 0;
+  document.getElementById('gainSummary').innerHTML = `
+    <div class="card bg-green"><div class="label">Total da semana selecionada</div><div class="value pos">${money(totalWeek)}</div></div>
+    <div class="card bg-green"><div class="label">Total do mês</div><div class="value pos">${money(totalMonth)}</div></div>
+    <div class="card bg-green"><div class="label">Total no ano</div><div class="value pos">${money(totalYear)}</div></div>
+    <div class="card bg-blue"><div class="label">Média semanal (ano)</div><div class="value">${money(avgWeek)}</div></div>
+  `;
+  drawGainsWeekChart();
+  drawGainsMonthChart();
+}
+
+function drawGainsWeekChart(){
+  const ctx = document.getElementById('chartGainsWeek');
+  if(!ctx) return;
+  if(window._chGw) window._chGw.destroy();
+  const labels = WEEKS.map(w=>`S${w.index}`);
+  const data = WEEKS.map(w=>state.gains.filter(g=>g.week===w.index).reduce((a,g)=>a+Number(g.value||0),0));
+  window._chGw = new Chart(ctx,{type:'bar',data:{labels,datasets:[{label:'Recebido (R$)',data,backgroundColor:'#16a34a'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+}
+function drawGainsMonthChart(){
+  const ctx = document.getElementById('chartGainsMonth');
+  if(!ctx) return;
+  if(window._chGm) window._chGm.destroy();
+  const data = MONTHS.map((_,i)=>gainsMonth(i+1));
+  window._chGm = new Chart(ctx,{type:'bar',data:{labels:MONTHS,datasets:[{label:'Recebido no mês (R$)',data,backgroundColor:'#2563eb'}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+}
+
+/* ============================================================
+   DESPESAS FIXAS
+   ============================================================ */
+function addFixed(){
+  const name = document.getElementById('fName').value.trim();
+  const category = document.getElementById('fCategory').value;
+  const value = parseFloat(document.getElementById('fValue').value);
+  const due = parseInt(document.getElementById('fDue').value);
+  if(!name) return alert('Informe o nome.');
+  if(!value || value<=0) return alert('Informe um valor válido.');
+  if(!due || due<1 || due>31) return alert('Dia de vencimento inválido.');
+  state.fixed.push({id:uid(), name, category, value, due});
+  save(); document.getElementById('fName').value=''; document.getElementById('fValue').value='';
+  document.getElementById('fDue').value='';
+  renderFixed(); renderOverview(); refreshChartsIfNeeded();
+}
+function deleteFixed(id){
+  if(!confirm('Excluir esta despesa fixa e todo o histórico de situação?')) return;
+  state.fixed = state.fixed.filter(f=>f.id!==id);
+  delete state.fixedStatus[id];
+  save(); renderFixed(); renderOverview(); refreshChartsIfNeeded();
+}
+function toggleFixedPaid(id, month){
+  if(!state.fixedStatus[id]) state.fixedStatus[id] = {};
+  state.fixedStatus[id][month] = !state.fixedStatus[id][month];
+  save(); renderFixed(); renderOverview(); refreshChartsIfNeeded();
+}
+function editFixed(id){
+  const f = state.fixed.find(x=>x.id===id);
+  if(!f) return;
+  openModal(`<h3>Editar despesa fixa</h3>
+    <div class="field"><label>Nome</label><input id="eName" value="${f.name.replace(/"/g,'&quot;')}"></div>
+    <div class="field"><label>Categoria</label><input id="eCat" value="${f.category}"></div>
+    <div class="field"><label>Valor</label><input type="number" step="0.01" id="eVal" value="${f.value}"></div>
+    <div class="field"><label>Dia vencimento</label><input type="number" min="1" max="31" id="eDue" value="${f.due}"></div>
+    <div class="actions"><button class="btn ghost" onclick="closeModal()">Cancelar</button>
+    <button class="btn primary" onclick="saveFixedEdit('${id}')">Salvar</button></div>`);
+}
+function saveFixedEdit(id){
+  const f = state.fixed.find(x=>x.id===id); if(!f) return;
+  f.name = document.getElementById('eName').value.trim();
+  f.category = document.getElementById('eCat').value.trim();
+  f.value = parseFloat(document.getElementById('eVal').value)||0;
+  f.due = parseInt(document.getElementById('eDue').value)||1;
+  save(); closeModal(); renderFixed(); renderOverview(); refreshChartsIfNeeded();
+}
+
+function renderFixed(){
+  const m = Number(document.getElementById('fFilterMonth').value)|| (new Date().getMonth()+1);
+  const tbody = document.getElementById('fixedTable');
+  tbody.innerHTML = state.fixed.length? state.fixed.map(f=>{
+    const paid = !!state.fixedStatus[f.id]?.[m];
+    return `<tr>
+      <td>${f.name}</td><td>${f.category}</td><td>${f.due}</td>
+      <td class="right neg">${money(f.value)}</td>
+      <td><span class="badge ${paid?'paid':'pend'}">${paid?'Pago':'Pendente'}</span></td>
+      <td>
+        <button class="btn small ghost" onclick="toggleFixedPaid('${f.id}',${m})">${paid?'↩':'✓'}</button>
+        <button class="btn small ghost" onclick="editFixed('${f.id}')">✎</button>
+        <button class="btn small danger" onclick="deleteFixed('${f.id}')">✕</button>
+      </td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="6" class="empty">Nenhuma despesa fixa cadastrada.</td></tr>`;
+
+  // Gráfico mensal
+  const ctx = document.getElementById('chartFixedMonth');
+  if(ctx){
+    if(window._chFm) window._chFm.destroy();
+    const total = MONTHS.map((_,i)=>fixedValueMonth(i+1));
+    const pago = MONTHS.map((_,i)=>fixedPaidMonth(i+1));
+    window._chFm = new Chart(ctx,{type:'bar',data:{labels:MONTHS,datasets:[
+      {label:'Total fixo',data:total,backgroundColor:'#ef4444'},
+      {label:'Pago',data:pago,backgroundColor:'#16a34a'}
+    ]},options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+      scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+  }
+}
+
+/* ============================================================
+   DESPESAS VARIÁVEIS
+   ============================================================ */
+document.querySelectorAll('#varSubtabs button').forEach(b=>{
+  b.addEventListener('click',()=>{
+    document.querySelectorAll('#varSubtabs button').forEach(x=>x.classList.remove('active'));
+    b.classList.add('active');
+    const mode = b.dataset.mode;
+    document.getElementById('varIndividual').classList.toggle('hidden', mode!=='individual');
+    document.getElementById('varAverage').classList.toggle('hidden', mode!=='average');
+    renderVariables();
+  });
+});
+
+function addVariable(){
+  const name = document.getElementById('vName').value.trim();
+  const category = document.getElementById('vCategory').value;
+  const date = document.getElementById('vDate').value;
+  const value = parseFloat(document.getElementById('vValue').value);
+  const desc = document.getElementById('vDesc').value.trim();
+  if(!name) return alert('Informe o nome do gasto.');
+  if(!date) return alert('Informe a data.');
+  if(!value || value<=0) return alert('Informe um valor válido.');
+  state.variable.push({id:uid(), name, category, date, value, desc});
+  save();
+  document.getElementById('vName').value=''; document.getElementById('vValue').value='';
+  document.getElementById('vDate').value=''; document.getElementById('vDesc').value='';
+  renderVariables(); renderOverview(); refreshChartsIfNeeded();
+}
+function deleteVariable(id){
+  if(!confirm('Excluir este gasto?')) return;
+  state.variable = state.variable.filter(v=>v.id!==id);
+  save(); renderVariables(); renderOverview(); refreshChartsIfNeeded();
+}
+function addAverage(){
+  const month = Number(document.getElementById('vaMonth').value);
+  const category = document.getElementById('vaCategory').value;
+  const value = parseFloat(document.getElementById('vaValue').value);
+  if(!value || value<=0) return alert('Informe um valor médio válido.');
+  // remove média existente da mesma categoria/mês
+  state.averages = state.averages.filter(a=>!(a.month===month && a.category===category));
+  state.averages.push({id:uid(), month, category, value});
+  save(); document.getElementById('vaValue').value='';
+  renderVariables(); renderOverview(); refreshChartsIfNeeded();
+}
+function deleteAverage(id){
+  state.averages = state.averages.filter(a=>a.id!==id);
+  save(); renderVariables(); renderOverview(); refreshChartsIfNeeded();
+}
+
+function renderVariables(){
+  const mSel = document.getElementById('vFilterMonth').value;
+  const search = document.getElementById('vSearch').value.toLowerCase();
+  let list = state.variable.slice().sort((a,b)=>a.date.localeCompare(b.date));
+  if(mSel!=='all') list = list.filter(v=>monthOfDate(v.date)==mSel);
+  if(search) list = list.filter(v=>v.name.toLowerCase().includes(search));
+  const tbody = document.getElementById('varTable');
+  tbody.innerHTML = list.length? list.map(v=>{
+    const m = monthOfDate(v.date);
+    const hasAvg = state.averages.some(a=>a.month===m && a.category===v.category);
+    return `<tr>
+      <td>${fmtDate(parseISO(v.date))}</td>
+      <td>${v.name} ${hasAvg?'<span class="badge info">ignorado (média)</span>':''}</td>
+      <td>${v.category}</td>
+      <td class="right neg">${money(v.value)}</td>
+      <td><button class="btn small danger" onclick="deleteVariable('${v.id}')">✕</button></td>
+    </tr>`;
+  }).join('') : `<tr><td colspan="5" class="empty">Nenhum gasto variável lançado.</td></tr>`;
+
+  document.getElementById('avgTable').innerHTML = state.averages.length? state.averages.map(a=>`
+    <tr><td>${MONTHS[a.month-1]}</td><td>${a.category}</td>
+    <td class="right neg">${money(a.value)}</td>
+    <td><button class="btn small danger" onclick="deleteAverage('${a.id}')">✕</button></td></tr>`).join('')
+    : `<tr><td colspan="4" class="empty">Nenhuma média cadastrada.</td></tr>`;
+
+  // gráfico variável por mês
+  const ctx = document.getElementById('chartVarMonth');
+  if(ctx){
+    if(window._chVm) window._chVm.destroy();
+    const data = MONTHS.map((_,i)=>variableMonth(i+1));
+    window._chVm = new Chart(ctx,{type:'bar',data:{labels:MONTHS,datasets:[{label:'Variável total (R$)',data,backgroundColor:'#8b5cf6'}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+        scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+  }
+}
+
+/* ============================================================
+   VISÃO GERAL
+   ============================================================ */
+function renderOverview(){
+  const m = Number(document.getElementById('ovMonth').value)||1;
+  const gM = gainsMonth(m), fM = fixedValueMonth(m), vM = variableMonth(m), dM = fM+vM;
+  const saldo = gM - dM;
+  const saldoReal = saldoRealizadoMonth(m);
+  const gY = gainsYear(), dY = expensesYear();
+  const media = dY/12;
+  const percFix = gM? (fM/gM*100):0;
+  const percVar = gM? (vM/gM*100):0;
+
+  document.getElementById('overviewCards').innerHTML = `
+    <div class="card bg-green"><div class="label">Ganhos no mês</div><div class="value pos">${money(gM)}</div></div>
+    <div class="card bg-red"><div class="label">Despesas fixas</div><div class="value neg">${money(fM)}</div></div>
+    <div class="card bg-red"><div class="label">Despesas variáveis</div><div class="value neg">${money(vM)}</div></div>
+    <div class="card bg-red"><div class="label">Despesas gerais</div><div class="value neg">${money(dM)}</div></div>
+    <div class="card ${saldo>=0?'bg-green':'bg-red'}"><div class="label">Saldo projetado do mês</div><div class="value ${saldo>=0?'pos':'neg'}">${money(saldo)}</div></div>
+    <div class="card ${saldoReal>=0?'bg-green':'bg-red'}"><div class="label">Saldo realizado (pagas)</div><div class="value ${saldoReal>=0?'pos':'neg'}">${money(saldoReal)}</div></div>
+    <div class="card bg-green"><div class="label">Ganhos no ano</div><div class="value pos">${money(gY)}</div></div>
+    <div class="card bg-red"><div class="label">Gastos no ano</div><div class="value neg">${money(dY)}</div></div>
+    <div class="card bg-blue"><div class="label">Média mensal de gastos</div><div class="value">${money(media)}</div></div>
+  `;
+
+  document.getElementById('ovTable').innerHTML = `
+    <tr><td>Ganhos do mês</td><td class="right pos">${money(gM)}</td></tr>
+    <tr><td>Despesas fixas (total)</td><td class="right neg">${money(fM)}</td></tr>
+    <tr><td>Despesas fixas pagas</td><td class="right pos">${money(fixedPaidMonth(m))}</td></tr>
+    <tr><td>Despesas fixas pendentes</td><td class="right warn">${money(fixedPendingMonth(m))}</td></tr>
+    <tr><td>Despesas variáveis (individual + média)</td><td class="right neg">${money(vM)}</td></tr>
+    <tr><td>Total de despesas</td><td class="right neg">${money(dM)}</td></tr>
+    <tr><td><strong>Saldo projetado</strong></td><td class="right ${saldo>=0?'pos':'neg'}"><strong>${money(saldo)}</strong></td></tr>
+    <tr><td><strong>Saldo realizado</strong> (apenas fixas pagas)</td><td class="right ${saldoReal>=0?'pos':'neg'}"><strong>${money(saldoReal)}</strong></td></tr>
+    <tr><td>% da renda comprometida com fixas</td><td class="right">${percFix.toFixed(1)}%</td></tr>
+    <tr><td>% da renda comprometida com variáveis</td><td class="right">${percVar.toFixed(1)}%</td></tr>
+    <tr><td>Saldo acumulado até o mês</td><td class="right ${saldoAcumuladoAte(m)>=0?'pos':'neg'}">${money(saldoAcumuladoAte(m))}</td></tr>
+  `;
+
+  // Tabela anual
+  let rows='';
+  for(let i=1;i<=12;i++){
+    const gm=gainsMonth(i), fp=fixedPaidMonth(i), vv=variableMonth(i);
+    const real=gm-(fp+vv);
+    const proj=gm-(fixedValueMonth(i)+vv);
+    rows += `<tr><td>${MONTHS[i-1]}</td><td class="right pos">${money(gm)}</td><td class="right neg">${money(fp)}</td>
+      <td class="right neg">${money(vv)}</td><td class="right ${real>=0?'pos':'neg'}">${money(real)}</td>
+      <td class="right ${proj>=0?'pos':'neg'}">${money(proj)}</td></tr>`;
+  }
+  document.getElementById('ovYearTable').innerHTML = rows;
+}
+
+/* ============================================================
+   CALENDÁRIO
+   ============================================================ */
+function renderCalendar(){
+  const m = Number(document.getElementById('calMonth').value)||1;
+  const container = document.getElementById('calendarContainer');
+  container.innerHTML='';
+  const first = new Date(2026,m-1,1);
+  const last = new Date(2026,m,0);
+  const startDow = first.getDay(); // 0 dom
+  const days = last.getDate();
+  let html = `<div class="cal-month"><h3>${MONTHS[m-1]} de 2026</h3><div class="cal-grid">`;
+  WEEKDAYS.forEach(d=>html+=`<div class="cal-dow">${d}</div>`);
+  for(let i=0;i<startDow;i++) html+=`<div class="cal-day other"></div>`;
+  for(let d=1; d<=days; d++){
+    const iso = `${YEAR}-${pad(m)}-${pad(d)}`;
+    const gains = state.gains.filter(g=>g.date===iso);
+    const fixas = state.fixed.filter(f=>f.due===d);
+    const variaveis = state.variable.filter(v=>v.date===iso);
+    let tag = '';
+    gains.forEach(g=>tag+=`<span class="tag gain">+ ${money(g.value)}</span>`);
+    fixas.forEach(f=>{
+      const paid = state.fixedStatus[f.id]?.[m];
+      tag+=`<span class="tag fixed" style="${paid?'opacity:.55;text-decoration:line-through':''}">${f.name} ${money(f.value)}</span>`;
+    });
+    variaveis.forEach(v=>tag+=`<span class="tag var">${v.name} ${money(v.value)}</span>`);
+    html += `<div class="cal-day"><div class="dnum">${d}</div>${tag}</div>`;
+  }
+  html += `</div>
+    <div style="margin-top:10px;font-size:.8rem;color:var(--muted)">
+      Ganhos do mês: <strong class="pos">${money(gainsMonth(m))}</strong> |
+      Despesas fixas: <strong class="neg">${money(fixedValueMonth(m))}</strong> |
+      Variáveis: <strong class="neg">${money(variableMonth(m))}</strong> |
+      Saldo projetado: <strong class="${saldoProjetadoMonth(m)>=0?'pos':'neg'}">${money(saldoProjetadoMonth(m))}</strong>
+    </div></div>`;
+  container.innerHTML = html;
+}
+
+/* ============================================================
+   GRÁFICOS GERAIS
+   ============================================================ */
+let charts = {};
+function renderCharts(){
+  // 1 ganhos por semana
+  if(charts.c1) charts.c1.destroy();
+  charts.c1 = new Chart(document.getElementById('ch1'),{type:'bar',data:{
+    labels:WEEKS.map(w=>'S'+w.index),
+    datasets:[{label:'Ganhos (R$)',data:WEEKS.map(w=>state.gains.filter(g=>g.week===w.index).reduce((a,g)=>a+Number(g.value||0),0)),backgroundColor:'#16a34a'}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+    scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+
+  // 2 ganhos x gastos
+  if(charts.c2) charts.c2.destroy();
+  charts.c2 = new Chart(document.getElementById('ch2'),{type:'bar',data:{
+    labels:MONTHS,
+    datasets:[
+      {label:'Ganhos',data:MONTHS.map((_,i)=>gainsMonth(i+1)),backgroundColor:'#16a34a'},
+      {label:'Gastos',data:MONTHS.map((_,i)=>expensesMonth(i+1)),backgroundColor:'#dc2626'}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+    scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+
+  // 3 pizza categorias (ano)
+  const catMap = {};
+  for(let m=1;m<=12;m++){
+    const bd = variableBreakdownMonth(m);
+    for(const c in bd) catMap[c]=(catMap[c]||0)+bd[c];
+  }
+  state.fixed.forEach(f=>{ catMap[f.category]=(catMap[f.category]||0)+Number(f.value||0)*12; });
+  const catLabels = Object.keys(catMap);
+  if(charts.c3) charts.c3.destroy();
+  charts.c3 = new Chart(document.getElementById('ch3'),{type:'pie',data:{
+    labels:catLabels.length?catLabels:['Sem dados'],
+    datasets:[{data:catLabels.length?catLabels.map(c=>catMap[c]):[1],backgroundColor:['#dc2626','#f59e0b','#2563eb','#16a34a','#8b5cf6','#ec4899','#14b8a6','#f97316','#64748b']}]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>c.label+': '+money(c.parsed)}}}}});
+
+  // 4 evolução saldo acumulado
+  const acum=[], acumProj=[];
+  let s=0, sp=0;
+  for(let m=1;m<=12;m++){ s+=saldoRealizadoMonth(m); sp+=saldoProjetadoMonth(m); acum.push(s); acumProj.push(sp); }
+  if(charts.c4) charts.c4.destroy();
+  charts.c4 = new Chart(document.getElementById('ch4'),{type:'line',data:{
+    labels:MONTHS,
+    datasets:[
+      {label:'Saldo realizado acumulado',data:acum,borderColor:'#2563eb',backgroundColor:'rgba(37,99,235,.1)',fill:true,tension:.3},
+      {label:'Saldo projetado acumulado',data:acumProj,borderColor:'#f59e0b',borderDash:[6,4],tension:.3}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+    scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+
+  // 5 fixas x variáveis
+  if(charts.c5) charts.c5.destroy();
+  charts.c5 = new Chart(document.getElementById('ch5'),{type:'bar',data:{
+    labels:MONTHS,
+    datasets:[
+      {label:'Fixas',data:MONTHS.map((_,i)=>fixedValueMonth(i+1)),backgroundColor:'#dc2626'},
+      {label:'Variáveis',data:MONTHS.map((_,i)=>variableMonth(i+1)),backgroundColor:'#8b5cf6'}
+    ]
+  },options:{responsive:true,maintainAspectRatio:false,plugins:{tooltip:{callbacks:{label:c=>money(c.parsed.y)}}},
+    scales:{y:{ticks:{callback:v=>'R$ '+v.toLocaleString('pt-BR')}}}}});
+}
+function refreshChartsIfNeeded(){
+  const active = document.querySelector('#mainNav button.active')?.dataset.tab;
+  if(active==='charts') renderCharts();
+  if(active==='overview') renderOverview();
+  if(active==='gains') renderGains();
+  if(active==='fixed') renderFixed();
+  if(active==='variable') renderVariables();
+  if(active==='calendar') renderCalendar();
+}
+
+/* ============================================================
+   MODAL / UTILITÁRIOS
+   ============================================================ */
+function openModal(html){
+  document.getElementById('modalContent').innerHTML = html;
+  document.getElementById('modalBg').classList.add('show');
+}
+function closeModal(){ document.getElementById('modalBg').classList.remove('show'); }
+document.getElementById('modalBg').addEventListener('click',e=>{ if(e.target.id==='modalBg') closeModal(); });
+
+function clearAll(){
+  if(!confirm('ATENÇÃO: isso apagará TODOS os lançamentos. Deseja continuar?')) return;
+  if(!confirm('Confirma novamente? Esta ação é irreversível.')) return;
+  state = {gains:[],fixed:[],fixedStatus:{},variable:[],averages:[]};
+  save();
+  document.getElementById('gainsTable').innerHTML='';
+  document.getElementById('fixedTable').innerHTML='';
+  document.getElementById('varTable').innerHTML='';
+  document.getElementById('avgTable').innerHTML='';
+  document.getElementById('overviewCards').innerHTML='';
+  document.getElementById('ovTable').innerHTML='';
+  document.getElementById('ovYearTable').innerHTML='';
+  document.getElementById('gainSummary').innerHTML='';
+  renderOverview(); renderFixed(); renderVariables(); renderGains(); renderCalendar();
+  Object.values(charts).forEach(c=>c.destroy()); charts={};
+}
+
+function exportCSV(){
+  let rows = [['Tipo','Data/Mês','Semana','Nome/Categoria','Valor','Status/Obs']];
+  state.gains.forEach(g=>rows.push(['Ganho',fmtDate(parseISO(g.date)),g.week,'Recebimento',num(g.value),g.desc||'']));
+  state.fixed.forEach(f=>{
+    for(let m=1;m<=12;m++){
+      rows.push(['Fixa',MONTHS[m-1],'',f.name,num(f.value),state.fixedStatus[f.id]?.[m]?'Pago':'Pendente']);
+    }
+  });
+  state.variable.forEach(v=>rows.push(['Variável',fmtDate(parseISO(v.date)),'',v.name,num(v.value),v.category]));
+  state.averages.forEach(a=>rows.push(['Média',MONTHS[a.month-1],'',a.category,num(a.value),'Média mensal']));
+  const csv = rows.map(r=>r.map(c=>`"${String(c).replace(/"/g,'""')}"`).join(';')).join('\n');
+  const blob = new Blob(['\ufeff'+csv],{type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a'); a.href=URL.createObjectURL(blob);
+  a.download='relatorio_financeiro_2026.csv'; a.click();
+}
+
+function exportPDF(){ window.print(); }
+
+/* ============================================================
+   INICIALIZAÇÃO
+   ============================================================ */
+function init(){
+  load();
+  // mês atual (ou janeiro)
+  const nowM = new Date().getFullYear()===2026 ? new Date().getMonth()+1 : 1;
+  document.getElementById('ovMonth').value = nowM;
+  document.getElementById('gFilterMonth').value = 'all';
+  document.getElementById('fFilterMonth').value = nowM;
+  document.getElementById('vFilterMonth').value = 'all';
+  document.getElementById('calMonth').value = nowM;
+  document.getElementById('vaMonth').value = nowM;
+  document.getElementById('gWeek').value = 1;
+  document.getElementById('gDate').value = isoDate(new Date(2026,0,1));
+  document.getElementById('vDate').value = isoDate(new Date(2026,0,1));
+  renderOverview();
+  renderGains();
+  renderFixed();
+  renderVariables();
+  renderCalendar();
+}
+init();
+</script>
+</body>
+</html>
